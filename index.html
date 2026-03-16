@@ -344,13 +344,13 @@
 </div>
 
 <script>
-  const API = "https://script.google.com/macros/s/AKfycbynJ7X-x6__g_sI9eYqKPbzE4_JS5PdGTSYOrjgcSKOZcgNSuyCYJBXveduVvrUqsPxKg/exec";
+  const API = "https://script.google.com/macros/s/AKfycby0CIbT93kw9p1emk3mgzm_4mi_WiRLZXXKfYidxFuAJEiZcYrw7v2HKZziAYx1sjNvYQ/exec";
 
   let items = [];
-  let expenses = JSON.parse(localStorage.getItem('resell_expenses') || '[]');
+  let expenses = [];
   let sellTarget = null;
 
-  function saveExpenses() { localStorage.setItem('resell_expenses', JSON.stringify(expenses)); }
+  function saveExpenses() { /* expenses now saved to Google Sheets */ }
   function setSyncStatus(state, label) { document.getElementById('sync-dot').className = 'sync-dot ' + state; document.getElementById('sync-label').textContent = label; }
   function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2500); }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
@@ -420,6 +420,11 @@
     try {
       const data = await jsonpFetch({ action: 'getAll' });
       items = (data.items || []).map(normalise);
+      expenses = (data.expenses || []).map(e => ({
+        id: String(e.id||''), description: String(e.description||''),
+        amount: parseFloat(e.amount)||0, category: String(e.category||''),
+        date: String(e.date||''), taxYear: String(e.taxYear||'')
+      }));
       setSyncStatus('synced', 'Synced');
       document.getElementById('loading-overlay').style.display = 'none';
       renderDashboard();
@@ -435,6 +440,11 @@
     try {
       const data = await jsonpFetch({ action: 'getAll' });
       items = (data.items || []).map(normalise);
+      expenses = (data.expenses || []).map(e => ({
+        id: String(e.id||''), description: String(e.description||''),
+        amount: parseFloat(e.amount)||0, category: String(e.category||''),
+        date: String(e.date||''), taxYear: String(e.taxYear||'')
+      }));
       setSyncStatus('synced', 'Synced');
     } catch(e) { setSyncStatus('error', 'Sync error — refresh to reload'); }
   }
@@ -574,34 +584,46 @@
   }
 
   // ── Expenses ──────────────────────────────────────────────
-  function addExpense() {
+  async function addExpense() {
     const desc = document.getElementById('e-desc').value.trim();
     const amount = parseFloat(document.getElementById('e-amount').value);
     if (!desc) { alert('Please enter a description'); return; }
     if (!amount || amount <= 0) { alert('Please enter a valid amount'); return; }
+    const btn = document.querySelector('#expenses .btn-primary');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    setSyncStatus('syncing', 'Saving...');
     const exp = {
-      id: uid(),
-      description: desc,
-      amount: amount,
+      id: uid(), description: desc, amount: amount,
       category: document.getElementById('e-cat').value,
       date: document.getElementById('e-date').value || todayStr(),
       taxYear: document.getElementById('e-year').value
     };
-    expenses.push(exp);
-    saveExpenses();
-    document.getElementById('e-desc').value = '';
-    document.getElementById('e-amount').value = '';
-    document.getElementById('e-date').value = todayStr();
-    toast('Expense added');
-    renderExpenses();
+    try {
+      await jsonpFetch({ action: 'addExpense', ...exp });
+      expenses.push(exp);
+      document.getElementById('e-desc').value = '';
+      document.getElementById('e-amount').value = '';
+      document.getElementById('e-date').value = todayStr();
+      toast('Expense added');
+      renderExpenses();
+      await reloadAfterWrite();
+      renderExpenses();
+      setSyncStatus('synced', 'Synced');
+    } catch(e) { setSyncStatus('error', 'Save failed'); toast('Failed to save — check connection'); }
+    btn.disabled = false; btn.textContent = 'Add expense';
   }
 
-  function deleteExpense(id) {
+  async function deleteExpense(id) {
     if (!confirm('Delete this expense?')) return;
-    expenses = expenses.filter(e => e.id !== id);
-    saveExpenses();
-    renderExpenses();
-    toast('Expense deleted');
+    setSyncStatus('syncing', 'Deleting...');
+    try {
+      await jsonpFetch({ action: 'deleteExpense', id });
+      expenses = expenses.filter(e => e.id !== id);
+      renderExpenses();
+      toast('Expense deleted');
+      await reloadAfterWrite();
+      renderExpenses();
+    } catch(e) { setSyncStatus('error', 'Delete failed'); toast('Failed to delete — check connection'); }
   }
 
   function renderExpenses() {
