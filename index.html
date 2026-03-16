@@ -93,6 +93,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--text2);background:var
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:9px 11px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text3);font-weight:600;border-bottom:1px solid var(--border);background:var(--surface2);white-space:nowrap}
+th:hover{color:var(--text2)}
 td{padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:var(--surface2)}
@@ -261,7 +262,7 @@ body.dark .badge-vehicle{background:#1e1030;color:#a080e0}
   <!-- Desktop table -->
   <div class="desktop-only card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
-      <table><thead><tr><th>Item</th><th>Category</th><th>Bought</th><th>Listed</th><th>Platform</th><th>Notes</th><th></th></tr></thead><tbody id="inv-table"></tbody></table>
+      <table><thead><tr id="inv-thead"></tr></thead><tbody id="inv-table"></tbody></table>
     </div>
   </div>
   <!-- Mobile cards -->
@@ -277,7 +278,7 @@ body.dark .badge-vehicle{background:#1e1030;color:#a080e0}
   <!-- Desktop -->
   <div class="desktop-only card" style="padding:0;overflow:hidden">
     <div class="table-wrap">
-      <table><thead><tr><th>Item</th><th>Platform</th><th>Bought</th><th>Sold for</th><th>Postage</th><th>Profit</th><th>Date</th><th></th></tr></thead><tbody id="sold-table"></tbody></table>
+      <table><thead><tr id="sold-thead"></tr></thead><tbody id="sold-table"></tbody></table>
     </div>
   </div>
   <!-- Mobile cards -->
@@ -396,6 +397,39 @@ const API = "https://script.google.com/macros/s/AKfycby0CIbT93kw9p1emk3mgzm_4mi_
 let items = [], expenses = [], sellTarget = null;
 let formDirty = false;
 let profitChart = null;
+let invSort = {col:'datePurchased', dir:-1};
+let soldSort = {col:'soldDate', dir:-1};
+
+// ── Sort helpers ──────────────────────────────────────────
+function sortArr(arr, col, dir){
+  return [...arr].sort((a,b)=>{
+    let va=a[col], vb=b[col];
+    if(col==='buyPrice'||col==='soldPrice'||col==='profit'||col==='postage'||col==='daysInStock'||col==='dayToSell'){va=parseFloat(va)||0;vb=parseFloat(vb)||0}
+    if(typeof va==='string')va=va.toLowerCase();
+    if(typeof vb==='string')vb=vb.toLowerCase();
+    if(va<vb)return -dir; if(va>vb)return dir; return 0;
+  });
+}
+function sortIcon(col, state){
+  if(state.col!==col)return'<span style="opacity:0.3;margin-left:4px">↕</span>';
+  return state.dir===1?'<span style="margin-left:4px">↑</span>':'<span style="margin-left:4px">↓</span>';
+}
+function daysAgo(dateStr){
+  if(!dateStr)return null;
+  const d=new Date(dateStr);if(isNaN(d))return null;
+  return Math.floor((Date.now()-d.getTime())/(1000*60*60*24));
+}
+function daysToSell(item){
+  if(!item.datePurchased||!item.soldDate)return null;
+  const a=new Date(item.datePurchased),b=new Date(item.soldDate);
+  if(isNaN(a)||isNaN(b))return null;
+  return Math.max(0,Math.floor((b-a)/(1000*60*60*24)));
+}
+function daysChip(n, warn=60){
+  if(n===null)return'—';
+  const color=n>=warn?'var(--red)':n>=warn/2?'var(--amber)':'var(--text3)';
+  return`<span style="font-size:11.5px;color:${color}">${n}d</span>`;
+}
 
 // ── Helpers ───────────────────────────────────────────────
 function setSyncStatus(s,l){document.getElementById('sync-dot').className='sync-dot '+s;document.getElementById('sync-label').textContent=l}
@@ -645,30 +679,55 @@ async function deleteExpense(id){
 }
 
 // ── Render: Inventory ─────────────────────────────────────
+function setInvSort(col){
+  if(invSort.col===col)invSort.dir*=-1;else{invSort.col=col;invSort.dir=1}
+  renderInventory();
+}
 function renderInventory(){
   const q=(document.getElementById('inv-search').value||'').toLowerCase();
-  const active=items.filter(i=>i.status==='active'&&(!q||i.name.toLowerCase().includes(q)||i.category.toLowerCase().includes(q)));
+  let active=items.filter(i=>i.status==='active'&&(!q||i.name.toLowerCase().includes(q)||i.category.toLowerCase().includes(q)));
+  // Augment with daysInStock for sorting
+  active=active.map(i=>({...i,daysInStock:daysAgo(i.datePurchased)||0}));
+  active=sortArr(active,invSort.col,invSort.dir);
   document.getElementById('inv-count').textContent=active.length?'('+active.length+' items)':'';
-  // Desktop
+  // Header
+  const thStyle='cursor:pointer;user-select:none;white-space:nowrap';
+  document.getElementById('inv-thead').innerHTML=`
+    <th style="${thStyle}" onclick="setInvSort('name')">Item${sortIcon('name',invSort)}</th>
+    <th style="${thStyle}" onclick="setInvSort('category')">Category${sortIcon('category',invSort)}</th>
+    <th style="${thStyle}" onclick="setInvSort('buyPrice')">Bought${sortIcon('buyPrice',invSort)}</th>
+    <th style="${thStyle}" onclick="setInvSort('listedPrice')">Listed${sortIcon('listedPrice',invSort)}</th>
+    <th style="${thStyle}" onclick="setInvSort('platform')">Platform${sortIcon('platform',invSort)}</th>
+    <th style="${thStyle}" onclick="setInvSort('daysInStock')">Days in stock${sortIcon('daysInStock',invSort)}</th>
+    <th></th>`;
+  // Desktop rows
   const tb=document.getElementById('inv-table');
   if(!active.length){tb.innerHTML='<tr><td colspan="7"><div class="empty">No items in inventory yet.</div></td></tr>';}
-  else{tb.innerHTML=active.map(i=>`<tr>
-    <td><div style="font-weight:500">${i.name}</div></td>
-    <td>${i.category}</td><td class="mono">${fmt(i.buyPrice)}</td>
+  else{tb.innerHTML=active.map(i=>{
+    const days=daysAgo(i.datePurchased);
+    return`<tr>
+    <td><div style="font-weight:500">${i.name}</div>${i.notes?`<div style="font-size:11px;color:var(--text3)">${i.notes}</div>`:''}</td>
+    <td>${i.category}</td>
+    <td class="mono">${fmt(i.buyPrice)}</td>
     <td class="mono">${i.listedPrice?fmt(i.listedPrice):'—'}</td>
     <td>${platformBadge(i.platform)}</td>
-    <td style="font-size:12px;color:var(--text3);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.notes||'—'}</td>
+    <td>${daysChip(days,60)}</td>
     <td><div style="display:flex;gap:5px">
       <button class="btn btn-sell" onclick="openSell('${i.id}')">Sell</button>
       <button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button>
       <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Del</button>
     </div></td>
-  </tr>`).join('');}
+  </tr>`;}).join('');}
   // Mobile cards
   const mc=document.getElementById('inv-cards');
   if(!active.length){mc.innerHTML='<div class="empty">No items in inventory yet.</div>';}
-  else{mc.innerHTML=active.map(i=>`<div class="item-card">
-    <div class="item-card-title">${i.name}</div>
+  else{mc.innerHTML=active.map(i=>{
+    const days=daysAgo(i.datePurchased);
+    return`<div class="item-card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div class="item-card-title">${i.name}</div>
+      ${days!==null?`<span style="font-size:11px;color:${days>=60?'var(--red)':days>=30?'var(--amber)':'var(--text3)'};flex-shrink:0;margin-left:8px">${days}d</span>`:''}
+    </div>
     <div class="item-card-row"><span>Bought</span><span>${fmt(i.buyPrice)}</span></div>
     <div class="item-card-row"><span>Category</span><span style="font-family:inherit">${i.category}</span></div>
     <div class="item-card-row"><span>Platform</span><span style="font-family:inherit">${i.platform||'—'}</span></div>
@@ -678,35 +737,60 @@ function renderInventory(){
       <button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button>
       <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Delete</button>
     </div>
-  </div>`).join('');}
+  </div>`;}).join('');}
 }
 
 // ── Render: Sold ──────────────────────────────────────────
+function setSoldSort(col){
+  if(soldSort.col===col)soldSort.dir*=-1;else{soldSort.col=col;soldSort.dir=1}
+  renderSold();
+}
 function renderSold(){
   const filter=document.getElementById('sold-filter').value;
   let sold=items.filter(i=>i.status==='sold');
   if(filter==='month'){const now=new Date();sold=sold.filter(i=>{const d=new Date(i.soldDate);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear()})}
   if(filter==='year')sold=sold.filter(i=>inTaxYear(i.soldDate));
+  // Augment with computed fields for sorting
+  sold=sold.map(i=>({...i,profit:i.soldPrice-i.buyPrice-(i.postage||0),dayToSell:daysToSell(i)||0}));
+  sold=sortArr(sold,soldSort.col,soldSort.dir);
+  const thStyle='cursor:pointer;user-select:none;white-space:nowrap';
+  document.getElementById('sold-thead').innerHTML=`
+    <th style="${thStyle}" onclick="setSoldSort('name')">Item${sortIcon('name',soldSort)}</th>
+    <th style="${thStyle}" onclick="setSoldSort('soldPlatform')">Platform${sortIcon('soldPlatform',soldSort)}</th>
+    <th style="${thStyle}" onclick="setSoldSort('buyPrice')">Bought${sortIcon('buyPrice',soldSort)}</th>
+    <th style="${thStyle}" onclick="setSoldSort('soldPrice')">Sold for${sortIcon('soldPrice',soldSort)}</th>
+    <th style="${thStyle}" onclick="setSoldSort('profit')">Profit${sortIcon('profit',soldSort)}</th>
+    <th style="${thStyle}" onclick="setSoldSort('dayToSell')">Days to sell${sortIcon('dayToSell',soldSort)}</th>
+    <th style="${thStyle}" onclick="setSoldSort('soldDate')">Date${sortIcon('soldDate',soldSort)}</th>
+    <th></th>`;
   // Desktop
   const tb=document.getElementById('sold-table');
   if(!sold.length){tb.innerHTML='<tr><td colspan="8"><div class="empty">No sales recorded yet.</div></td></tr>';}
-  else{tb.innerHTML=sold.map(i=>{const p=i.soldPrice-i.buyPrice-(i.postage||0);return`<tr>
+  else{tb.innerHTML=sold.map(i=>{
+    const pts=daysToSell(i);
+    return`<tr>
     <td><div style="font-weight:500">${i.name}</div></td>
     <td>${platformBadge(i.soldPlatform)}</td>
-    <td class="mono">${fmt(i.buyPrice)}</td><td class="mono">${fmt(i.soldPrice)}</td>
-    <td class="mono" style="color:var(--text2)">${fmt(i.postage||0)}</td>
-    <td class="${p>=0?'profit-pos':'profit-neg'}">${fmt(p)}</td>
+    <td class="mono">${fmt(i.buyPrice)}</td>
+    <td class="mono">${fmt(i.soldPrice)}</td>
+    <td class="${i.profit>=0?'profit-pos':'profit-neg'}">${fmt(i.profit)}</td>
+    <td>${daysChip(pts,30)}</td>
     <td style="color:var(--text2)">${i.soldDate?i.soldDate.slice(0,10):'—'}</td>
     <td><button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button></td>
   </tr>`;}).join('');}
   // Mobile
   const sc=document.getElementById('sold-cards');
   if(!sold.length){sc.innerHTML='<div class="empty">No sales recorded yet.</div>';}
-  else{sc.innerHTML=sold.map(i=>{const p=i.soldPrice-i.buyPrice-(i.postage||0);return`<div class="item-card">
-    <div class="item-card-title">${i.name}</div>
+  else{sc.innerHTML=sold.map(i=>{
+    const pts=daysToSell(i);
+    return`<div class="item-card">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div class="item-card-title">${i.name}</div>
+      ${pts!==null?`<span style="font-size:11px;color:var(--text3);flex-shrink:0;margin-left:8px">${pts}d</span>`:''}
+    </div>
     <div class="item-card-row"><span>Sold for</span><span>${fmt(i.soldPrice)}</span></div>
     <div class="item-card-row"><span>Bought for</span><span>${fmt(i.buyPrice)}</span></div>
-    <div class="item-card-row"><span>Profit</span><span class="${p>=0?'profit-pos':'profit-neg'}">${fmt(p)}</span></div>
+    <div class="item-card-row"><span>Profit</span><span class="${i.profit>=0?'profit-pos':'profit-neg'}">${fmt(i.profit)}</span></div>
     <div class="item-card-row"><span>Platform</span><span style="font-family:inherit">${i.soldPlatform||'—'}</span></div>
     <div class="item-card-row"><span>Date</span><span style="font-family:inherit">${i.soldDate?i.soldDate.slice(0,10):'—'}</span></div>
     <div class="item-card-actions"><button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button></div>
