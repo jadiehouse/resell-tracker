@@ -296,7 +296,38 @@
   </div>
 </main>
 
-<!-- SELL MODAL -->
+<!-- EDIT MODAL -->
+<div id="edit-modal" class="modal-bg">
+  <div class="modal" style="width:440px">
+    <div class="modal-title">Edit item</div>
+    <div style="margin-bottom:1.25rem"></div>
+    <input type="hidden" id="edit-id">
+    <label>Item name</label><input id="edit-name" type="text">
+    <div class="row2">
+      <div><label>Purchase price (£)</label><input id="edit-buy" type="number" step="0.01" min="0"></div>
+      <div><label>Category</label>
+        <select id="edit-cat"><option>Clothing</option><option>Footwear</option><option>Electronics</option><option>Accessories</option><option>Home</option><option>Collectibles</option><option>Other</option></select>
+      </div>
+    </div>
+    <div class="row2">
+      <div><label>Listed platform</label>
+        <select id="edit-plat"><option value="">Not listed yet</option><option value="eBay">eBay</option><option value="Vinted">Vinted</option><option value="Both">Both</option></select>
+      </div>
+      <div><label>Listed price (£)</label><input id="edit-list" type="number" step="0.01" min="0"></div>
+    </div>
+    <div class="row2">
+      <div><label>Condition</label>
+        <select id="edit-cond"><option>New</option><option>Excellent</option><option>Good</option><option>Fair</option></select>
+      </div>
+      <div><label>Source</label><input id="edit-source" type="text" placeholder="e.g. car boot"></div>
+    </div>
+    <label>Notes</label><input id="edit-notes" type="text" placeholder="Any extra details">
+    <div class="btn-group">
+      <button class="btn btn-primary" id="edit-save-btn" onclick="saveEdit()">Save changes</button>
+      <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 <div id="sell-modal" class="modal-bg">
   <div class="modal">
     <div class="modal-title">Mark as sold</div>
@@ -476,6 +507,50 @@
   function closeModal() { document.getElementById('sell-modal').classList.remove('open'); sellTarget = null; }
   document.getElementById('sell-modal').addEventListener('click', function(e) { if (e.target === this) closeModal(); });
 
+  function openEdit(id) {
+    const item = items.find(i => i.id === id);
+    document.getElementById('edit-id').value = item.id;
+    document.getElementById('edit-name').value = item.name;
+    document.getElementById('edit-buy').value = item.buyPrice;
+    document.getElementById('edit-list').value = item.listedPrice || '';
+    document.getElementById('edit-notes').value = item.notes || '';
+    document.getElementById('edit-source').value = item.source || '';
+    document.getElementById('edit-cat').value = item.category || 'Other';
+    document.getElementById('edit-cond').value = item.condition || 'Good';
+    document.getElementById('edit-plat').value = item.platform || '';
+    document.getElementById('edit-modal').classList.add('open');
+  }
+  function closeEditModal() { document.getElementById('edit-modal').classList.remove('open'); }
+  document.getElementById('edit-modal').addEventListener('click', function(e) { if (e.target === this) closeEditModal(); });
+
+  async function saveEdit() {
+    const id = document.getElementById('edit-id').value;
+    const btn = document.getElementById('edit-save-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    setSyncStatus('syncing', 'Saving...');
+    const item = items.find(i => i.id === id);
+    const updated = { ...item,
+      name: document.getElementById('edit-name').value.trim(),
+      buyPrice: parseFloat(document.getElementById('edit-buy').value) || 0,
+      listedPrice: parseFloat(document.getElementById('edit-list').value) || 0,
+      notes: document.getElementById('edit-notes').value.trim(),
+      source: document.getElementById('edit-source').value.trim(),
+      category: document.getElementById('edit-cat').value,
+      condition: document.getElementById('edit-cond').value,
+      platform: document.getElementById('edit-plat').value
+    };
+    try {
+      await jsonpFetch({ action: 'updateItem', ...updated });
+      items[items.findIndex(i => i.id === id)] = updated;
+      closeEditModal();
+      renderInventory();
+      toast('Item updated');
+      await reloadAfterWrite();
+      renderInventory();
+    } catch(e) { setSyncStatus('error', 'Save failed'); toast('Failed to save — check connection'); }
+    btn.disabled = false; btn.textContent = 'Save changes';
+  }
+
   async function confirmSell() {
     const price = parseFloat(document.getElementById('m-price').value);
     if (!price || price <= 0) { alert('Please enter a valid sold price'); return; }
@@ -584,6 +659,7 @@
       <td style="font-size:12px;color:var(--text3);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${i.notes||'—'}</td>
       <td><div style="display:flex;gap:6px">
         <button class="btn btn-sell" onclick="openSell('${i.id}')">Sell</button>
+        <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px" onclick="openEdit('${i.id}')">Edit</button>
         <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Delete</button>
       </div></td>
     </tr>`).join('');
@@ -606,7 +682,7 @@
         <td class="mono">${fmt(i.soldPrice)}</td>
         <td class="mono" style="color:var(--text2)">${fmt(i.postage||0)}</td>
         <td class="${profit>=0?'profit-pos':'profit-neg'}">${fmt(profit)}</td>
-        <td style="color:var(--text2);font-size:13px">${i.soldDate||'—'}</td>
+        <td style="color:var(--text2);font-size:13px">${i.soldDate?i.soldDate.slice(0,10):'—'}</td>
       </tr>`;
     }).join('');
   }
@@ -723,7 +799,7 @@
   }
 
   // ── Password gate ─────────────────────────────────────────
-  const PW_HASH = "c3ca7f2b743b77aeae0b8c5dc42e2a0fc63b06e0e5ab55af7e9b53bb8d02c0e4";
+  const PW_HASH = "bf216b1bf11a4566b586346a56a7b5caaa0e5992afa8676e41cfe5adbc575034";
   async function hashStr(str) {
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
     return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
