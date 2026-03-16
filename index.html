@@ -678,7 +678,12 @@ async function deleteExpense(id){
   }catch(e){setSyncStatus('error','Delete failed');toast('Failed to delete')}
 }
 
-// ── Render: Inventory ─────────────────────────────────────
+// ── eBay sold listings search ─────────────────────────────
+function ebaySearch(encodedName){
+  const name=decodeURIComponent(encodedName);
+  const url='https://www.ebay.co.uk/sch/i.html?_nkw='+encodeURIComponent(name)+'&LH_Sold=1&LH_Complete=1';
+  window.open(url,'_blank');
+}
 function setInvSort(col){
   if(invSort.col===col)invSort.dir*=-1;else{invSort.col=col;invSort.dir=1}
   renderInventory();
@@ -715,6 +720,7 @@ function renderInventory(){
     <td><div style="display:flex;gap:5px">
       <button class="btn btn-sell" onclick="openSell('${i.id}')">Sell</button>
       <button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button>
+      <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px" onclick="ebaySearch('${encodeURIComponent(i.name)}')">eBay</button>
       <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Del</button>
     </div></td>
   </tr>`;}).join('');}
@@ -735,6 +741,7 @@ function renderInventory(){
     <div class="item-card-actions">
       <button class="btn btn-sell" onclick="openSell('${i.id}')">Sell</button>
       <button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button>
+      <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px" onclick="ebaySearch('${encodeURIComponent(i.name)}')">eBay</button>
       <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Delete</button>
     </div>
   </div>`;}).join('');}
