@@ -115,6 +115,12 @@
   .tax-breakdown .row-total { color: var(--text); font-weight: 600; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; }
   .tax-breakdown .row-total-val { font-family: 'DM Mono', monospace; font-weight: 600; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px; text-align: right; }
 
+  #pw-screen { position: fixed; inset: 0; background: var(--bg); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+  .pw-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem; width: 320px; }
+  .pw-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+  .pw-sub { font-size: 13.5px; color: var(--text2); margin-bottom: 1.5rem; line-height: 1.6; }
+  .pw-error { font-size: 13px; color: var(--red); margin-top: 10px; min-height: 18px; }
+
   @media (max-width: 640px) {
     header { padding: 10px 1rem; flex-wrap: wrap; height: auto; gap: 8px; }
     nav .tab { padding: 6px 10px; font-size: 12px; }
@@ -126,6 +132,17 @@
 </style>
 </head>
 <body>
+
+<div id="pw-screen">
+  <div class="pw-card">
+    <div class="pw-title">Resell Tracker</div>
+    <div class="pw-sub">Enter your password to continue.</div>
+    <label style="margin-top:0">Password</label>
+    <input type="password" id="pw-input" placeholder="Password" onkeydown="if(event.key==='Enter')checkPassword()">
+    <div class="pw-error" id="pw-error"></div>
+    <div class="btn-group"><button class="btn btn-primary" onclick="checkPassword()" style="width:100%;margin-top:1rem">Unlock</button></div>
+  </div>
+</div>
 
 <div id="loading-overlay"><div class="spinner"></div><p>Loading your data...</p></div>
 <div id="toast"></div>
@@ -705,9 +722,39 @@
     downloadCSV(rows,filename);
   }
 
+  // ── Password gate ─────────────────────────────────────────
+  const PW_HASH = "c3ca7f2b743b77aeae0b8c5dc42e2a0fc63b06e0e5ab55af7e9b53bb8d02c0e4";
+  async function hashStr(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  async function checkPassword() {
+    const val = document.getElementById('pw-input').value;
+    const hash = await hashStr(val);
+    if (hash === PW_HASH) {
+      localStorage.setItem('rt_auth', hash);
+      document.getElementById('pw-screen').style.display = 'none';
+      loadData();
+    } else {
+      document.getElementById('pw-error').textContent = 'Incorrect password — try again.';
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-input').focus();
+    }
+  }
+  async function initAuth() {
+    const stored = localStorage.getItem('rt_auth');
+    if (stored === PW_HASH) {
+      document.getElementById('pw-screen').style.display = 'none';
+      loadData();
+    } else {
+      document.getElementById('loading-overlay').style.display = 'none';
+      document.getElementById('pw-input').focus();
+    }
+  }
+
   document.getElementById('a-date').value = todayStr();
   document.getElementById('e-date').value = todayStr();
-  loadData();
+  initAuth();
 </script>
 </body>
 </html>
