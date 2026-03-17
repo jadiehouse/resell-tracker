@@ -113,6 +113,7 @@ tr:hover td{background:var(--surface2)}
 .badge-vinted{background:var(--teal-bg);color:var(--teal)}
 .badge-other{background:var(--surface2);color:var(--text2)}
 .badge-unlisted{background:var(--surface2);color:var(--text3)}
+.badge-damaged{background:var(--red-bg);color:var(--red)}
 .badge-storage{background:var(--amber-bg);color:var(--amber)}
 .badge-vehicle{background:#f0e8fa;color:#5a3a8a}
 body.dark .badge-vehicle{background:#1e1030;color:#a080e0}
@@ -249,6 +250,13 @@ body.dark .badge-vehicle{background:#1e1030;color:#a080e0}
       <div><label>Source (optional)</label><input id="a-source" type="text" placeholder="e.g. car boot" oninput="markDirty()"></div>
     </div>
     <label>Notes (optional)</label><input id="a-notes" type="text" placeholder="e.g. original box, minor marks" oninput="markDirty()">
+    <div style="display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px;background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius-sm)">
+      <input type="checkbox" id="a-damaged" onchange="markDirty();updateAddBtn()" style="width:16px;height:16px;cursor:pointer;accent-color:var(--red);flex-shrink:0">
+      <div>
+        <div style="font-size:13.5px;font-weight:500;color:var(--red)">Mark as damaged</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">Item cannot be sold — will be logged as a loss at the purchase price</div>
+      </div>
+    </div>
     <div class="btn-group"><button class="btn btn-primary" id="add-btn" onclick="addItem()">Add to inventory</button></div>
   </div>
 </div>
@@ -385,6 +393,16 @@ body.dark .badge-vehicle{background:#1e1030;color:#a080e0}
       </div>
     </div>
     <label>Notes</label><input id="edit-notes" type="text" placeholder="Any extra details">
+    <!-- Damaged option (active items only) -->
+    <div id="edit-damaged-section" style="display:none;margin-top:14px;padding:12px;background:var(--red-bg);border:1px solid var(--red);border-radius:var(--radius-sm)">
+      <div style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="edit-damaged" onchange="updateEditBtn()" style="width:16px;height:16px;cursor:pointer;accent-color:var(--red);flex-shrink:0">
+        <div>
+          <div style="font-size:13.5px;font-weight:500;color:var(--red)">Mark as damaged</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">Item cannot be sold — will be logged as a loss at the purchase price</div>
+        </div>
+      </div>
+    </div>
     <div class="btn-group">
       <button class="btn btn-primary" id="edit-save-btn" onclick="saveEdit()">Save changes</button>
       <button class="btn btn-secondary" onclick="closeModal('edit-modal')">Cancel</button>
@@ -444,6 +462,7 @@ function platformBadge(p){
   if(p==='eBay')return'<span class="badge badge-ebay">eBay</span>';
   if(p==='Vinted')return'<span class="badge badge-vinted">Vinted</span>';
   if(p==='Both')return'<span class="badge badge-ebay">eBay</span> <span class="badge badge-vinted">Vinted</span>';
+  if(p==='Damaged')return'<span class="badge badge-damaged">Damaged</span>';
   return'<span class="badge badge-other">'+p+'</span>';
 }
 function expCatBadge(c){
@@ -522,7 +541,6 @@ async function reloadAfterWrite(){
 
 // ── Navigation ────────────────────────────────────────────
 function showTab(t,el){
-  if(formDirty&&t!=='add'){if(!confirm('You have unsaved changes. Leave anyway?'))return}
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.getElementById(t).classList.add('active');el.classList.add('active');
@@ -538,22 +556,59 @@ function closeModal(id){document.getElementById(id).classList.remove('open')}
 document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',function(e){if(e.target===this)this.classList.remove('open')}));
 
 // ── Add item ──────────────────────────────────────────────
+function updateAddBtn(){
+  const damaged=document.getElementById('a-damaged').checked;
+  const btn=document.getElementById('add-btn');
+  btn.textContent=damaged?'Log as damaged':'Add to inventory';
+  btn.style.background=damaged?'var(--red)':'';
+}
+
 async function addItem(){
   const name=document.getElementById('a-name').value.trim();
   if(!name){alert('Please enter an item name');return}
+  const damaged=document.getElementById('a-damaged').checked;
+  const buyPrice=parseFloat(document.getElementById('a-buy').value)||0;
   const btn=document.getElementById('add-btn');
   btn.disabled=true;btn.textContent='Saving...';setSyncStatus('syncing','Saving...');
-  const item=normalise({id:uid(),name,buyPrice:document.getElementById('a-buy').value,category:document.getElementById('a-cat').value,platform:document.getElementById('a-plat').value,listedPrice:document.getElementById('a-list').value,datePurchased:document.getElementById('a-date').value||todayStr(),condition:document.getElementById('a-cond').value,source:document.getElementById('a-source').value.trim(),notes:document.getElementById('a-notes').value.trim(),status:'active'});
+
+  const baseNotes=document.getElementById('a-notes').value.trim();
+  const item=normalise({
+    id:uid(), name,
+    buyPrice,
+    category:document.getElementById('a-cat').value,
+    platform:damaged?'':document.getElementById('a-plat').value,
+    listedPrice:damaged?0:parseFloat(document.getElementById('a-list').value)||0,
+    datePurchased:document.getElementById('a-date').value||todayStr(),
+    condition:document.getElementById('a-cond').value,
+    source:document.getElementById('a-source').value.trim(),
+    notes:damaged?(baseNotes?'Damaged — '+baseNotes:'Damaged — unable to sell'):baseNotes,
+    status:damaged?'sold':'active',
+    soldPrice:damaged?0:0,
+    soldPlatform:damaged?'Damaged':'',
+    soldDate:damaged?todayStr():'',
+    postage:0
+  });
+
   try{
     await jsonpFetch({action:'addItem',...item});
     items.push(item);
     ['a-name','a-buy','a-list','a-notes','a-source'].forEach(id=>document.getElementById(id).value='');
     document.getElementById('a-date').value=todayStr();
-    clearDirty();toast('Item added');
-    showTab('inventory',document.querySelectorAll('.tab')[2]);
-    await reloadAfterWrite();renderInventory();
+    document.getElementById('a-damaged').checked=false;
+    updateAddBtn();
+    clearDirty();
+    if(damaged){
+      toast('Logged as damaged — recorded as a loss');
+      showTab('sold',document.querySelectorAll('.tab')[3]);
+      await reloadAfterWrite();renderSold();
+    }else{
+      toast('Item added');
+      showTab('inventory',document.querySelectorAll('.tab')[2]);
+      await reloadAfterWrite();renderInventory();
+    }
   }catch(e){setSyncStatus('error','Save failed');toast('Failed to save')}
-  btn.disabled=false;btn.textContent='Add to inventory';
+  btn.disabled=false;
+  updateAddBtn();
 }
 
 // ── Delete item ───────────────────────────────────────────
@@ -595,6 +650,12 @@ async function confirmSell(){
 }
 
 // ── Edit modal (active + sold) ────────────────────────────
+function updateEditBtn(){
+  const damaged=document.getElementById('edit-damaged').checked;
+  const btn=document.getElementById('edit-save-btn');
+  btn.textContent=damaged?'Log as damaged':'Save changes';
+  btn.style.background=damaged?'var(--red)':'';
+}
 function openEdit(id){
   const item=items.find(i=>i.id===id);
   document.getElementById('edit-id').value=item.id;
@@ -607,33 +668,49 @@ function openEdit(id){
   document.getElementById('edit-cat').value=item.category||'Other';
   document.getElementById('edit-cond').value=item.condition||'Good';
   document.getElementById('edit-plat').value=item.platform||'';
+  // Reset damaged checkbox
+  document.getElementById('edit-damaged').checked=false;
+  updateEditBtn();
   const soldFields=document.getElementById('edit-sold-fields');
+  const damagedSection=document.getElementById('edit-damaged-section');
   if(item.status==='sold'){
     soldFields.style.display='block';
+    damagedSection.style.display='none';
     document.getElementById('edit-sold-price').value=item.soldPrice||'';
     document.getElementById('edit-sold-plat').value=item.soldPlatform||'eBay';
     document.getElementById('edit-sold-date').value=item.soldDate?item.soldDate.slice(0,10):'';
     document.getElementById('edit-postage').value=item.postage||0;
-  }else{soldFields.style.display='none'}
+  }else{
+    soldFields.style.display='none';
+    damagedSection.style.display='block';
+  }
   document.getElementById('edit-modal').classList.add('open');
 }
 async function saveEdit(){
   const id=document.getElementById('edit-id').value;
   const status=document.getElementById('edit-status').value;
+  const damaged=status==='active'&&document.getElementById('edit-damaged').checked;
   const btn=document.getElementById('edit-save-btn');
   btn.disabled=true;btn.textContent='Saving...';setSyncStatus('syncing','Saving...');
   const item=items.find(i=>i.id===id);
+  const baseNotes=document.getElementById('edit-notes').value.trim();
   const updated={...item,
     name:document.getElementById('edit-name').value.trim(),
     buyPrice:parseFloat(document.getElementById('edit-buy').value)||0,
     listedPrice:parseFloat(document.getElementById('edit-list').value)||0,
-    notes:document.getElementById('edit-notes').value.trim(),
+    notes:damaged?(baseNotes?'Damaged — '+baseNotes:'Damaged — unable to sell'):baseNotes,
     source:document.getElementById('edit-source').value.trim(),
     category:document.getElementById('edit-cat').value,
     condition:document.getElementById('edit-cond').value,
-    platform:document.getElementById('edit-plat').value
+    platform:damaged?'':document.getElementById('edit-plat').value
   };
-  if(status==='sold'){
+  if(damaged){
+    updated.status='sold';
+    updated.soldPrice=0;
+    updated.soldPlatform='Damaged';
+    updated.soldDate=todayStr();
+    updated.postage=0;
+  }else if(status==='sold'){
     updated.soldPrice=parseFloat(document.getElementById('edit-sold-price').value)||0;
     updated.soldPlatform=document.getElementById('edit-sold-plat').value;
     updated.soldDate=document.getElementById('edit-sold-date').value||'';
@@ -643,11 +720,19 @@ async function saveEdit(){
     await jsonpFetch({action:'updateItem',...updated});
     items[items.findIndex(i=>i.id===id)]=updated;
     closeModal('edit-modal');
-    status==='sold'?renderSold():renderInventory();
-    toast('Item updated');await reloadAfterWrite();
-    status==='sold'?renderSold():renderInventory();
+    if(damaged){
+      toast('Logged as damaged — recorded as a loss');
+      showTab('sold',document.querySelectorAll('.tab')[3]);
+      await reloadAfterWrite();renderSold();
+    }else{
+      toast('Item updated');
+      status==='sold'?renderSold():renderInventory();
+      await reloadAfterWrite();
+      status==='sold'?renderSold():renderInventory();
+    }
   }catch(e){setSyncStatus('error','Save failed');toast('Failed to save')}
-  btn.disabled=false;btn.textContent='Save changes';
+  btn.disabled=false;
+  updateEditBtn();
 }
 
 // ── Expenses ──────────────────────────────────────────────
@@ -783,7 +868,10 @@ function renderSold(){
     <td class="${i.profit>=0?'profit-pos':'profit-neg'}">${fmt(i.profit)}</td>
     <td>${daysChip(pts,30)}</td>
     <td style="color:var(--text2)">${i.soldDate?i.soldDate.slice(0,10):'—'}</td>
-    <td><button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button></td>
+    <td><div style="display:flex;gap:5px">
+      <button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button>
+      <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Del</button>
+    </div></td>
   </tr>`;}).join('');}
   // Mobile
   const sc=document.getElementById('sold-cards');
@@ -800,7 +888,10 @@ function renderSold(){
     <div class="item-card-row"><span>Profit</span><span class="${i.profit>=0?'profit-pos':'profit-neg'}">${fmt(i.profit)}</span></div>
     <div class="item-card-row"><span>Platform</span><span style="font-family:inherit">${i.soldPlatform||'—'}</span></div>
     <div class="item-card-row"><span>Date</span><span style="font-family:inherit">${i.soldDate?i.soldDate.slice(0,10):'—'}</span></div>
-    <div class="item-card-actions"><button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button></div>
+    <div class="item-card-actions">
+      <button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button>
+      <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Delete</button>
+    </div>
   </div>`;}).join('');}
 }
 
