@@ -265,7 +265,18 @@ body.dark .badge-vehicle{background:#1e1030;color:#a080e0}
 <div id="inventory" class="section">
   <div class="search-bar">
     <div class="page-title" style="margin:0">Inventory <span id="inv-count" style="font-size:13px;font-weight:400;color:var(--text3)"></span></div>
-    <input type="text" id="inv-search" placeholder="Search..." style="max-width:200px" oninput="renderInventory()">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="inv-search" placeholder="Search..." style="max-width:200px" oninput="renderInventory()">
+      <button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;white-space:nowrap" onclick="toggleBulkMode('inv')">Bulk edit</button>
+    </div>
+  </div>
+  <div id="inv-bulk-bar" style="display:none;background:var(--blue-bg);border:1px solid var(--blue);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:10px;display:none;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+    <span id="inv-bulk-count" style="font-size:13px;color:var(--blue);font-weight:500">0 selected</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="selectAllBulk('inv')">Select all</button>
+      <button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="openBulkCategory('inv')">Change category</button>
+      <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="toggleBulkMode('inv')">Cancel</button>
+    </div>
   </div>
   <!-- Desktop table -->
   <div class="desktop-only card" style="padding:0;overflow:hidden">
@@ -281,7 +292,19 @@ body.dark .badge-vehicle{background:#1e1030;color:#a080e0}
 <div id="sold" class="section">
   <div class="search-bar">
     <div class="page-title" style="margin:0">Sold items</div>
-    <select id="sold-filter" onchange="renderSold()" style="max-width:170px"><option value="all">All time</option><option value="month">This month</option><option value="year">This tax year</option></select>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="sold-search" placeholder="Search..." style="max-width:180px" oninput="renderSold()">
+      <select id="sold-filter" onchange="renderSold()" style="max-width:150px"><option value="all">All time</option><option value="month">This month</option><option value="year">This tax year</option></select>
+      <button class="btn btn-secondary" style="font-size:12px;padding:6px 12px;white-space:nowrap" onclick="toggleBulkMode('sold')">Bulk edit</button>
+    </div>
+  </div>
+  <div id="sold-bulk-bar" style="display:none;background:var(--blue-bg);border:1px solid var(--blue);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:10px;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+    <span id="sold-bulk-count" style="font-size:13px;color:var(--blue);font-weight:500">0 selected</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="selectAllBulk('sold')">Select all</button>
+      <button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="openBulkCategory('sold')">Change category</button>
+      <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" onclick="toggleBulkMode('sold')">Cancel</button>
+    </div>
   </div>
   <!-- Desktop -->
   <div class="desktop-only card" style="padding:0;overflow:hidden">
@@ -410,6 +433,23 @@ body.dark .badge-vehicle{background:#1e1030;color:#a080e0}
   </div>
 </div>
 
+<!-- BULK CATEGORY MODAL -->
+<div id="bulk-modal" class="modal-bg">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-title">Change category</div>
+    <div id="bulk-modal-sub" class="modal-sub"></div>
+    <label>New category</label>
+    <select id="bulk-cat">
+      <option>Clothing</option><option>Footwear</option><option>Electronics</option>
+      <option>Accessories</option><option>Home</option><option>Collectibles</option><option>Other</option>
+    </select>
+    <div class="btn-group">
+      <button class="btn btn-primary" id="bulk-save-btn" onclick="saveBulkCategory()">Apply to selected</button>
+      <button class="btn btn-secondary" onclick="closeModal('bulk-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const API = "https://script.google.com/macros/s/AKfycby0CIbT93kw9p1emk3mgzm_4mi_WiRLZXXKfYidxFuAJEiZcYrw7v2HKZziAYx1sjNvYQ/exec";
 let items = [], expenses = [], sellTarget = null;
@@ -417,6 +457,8 @@ let formDirty = false;
 let profitChart = null;
 let invSort = {col:'datePurchased', dir:-1};
 let soldSort = {col:'soldDate', dir:-1};
+let bulkMode = {inv: false, sold: false};
+let bulkSelected = {inv: new Set(), sold: new Set()};
 
 // ── Sort helpers ──────────────────────────────────────────
 function sortArr(arr, col, dir){
@@ -769,6 +811,64 @@ function ebaySearch(encodedName){
   const url='https://www.ebay.co.uk/sch/i.html?_nkw='+encodeURIComponent(name)+'&LH_Sold=1&LH_Complete=1';
   window.open(url,'_blank');
 }
+// ── Bulk edit ─────────────────────────────────────────────
+function toggleBulkMode(tab){
+  bulkMode[tab]=!bulkMode[tab];
+  bulkSelected[tab].clear();
+  const bar=document.getElementById(tab+'-bulk-bar');
+  bar.style.display=bulkMode[tab]?'flex':'none';
+  updateBulkCount(tab);
+  tab==='inv'?renderInventory():renderSold();
+}
+function toggleBulkSelect(tab,id){
+  if(bulkSelected[tab].has(id))bulkSelected[tab].delete(id);
+  else bulkSelected[tab].add(id);
+  updateBulkCount(tab);
+  const row=document.getElementById('bulk-row-'+id);
+  if(row)row.style.background=bulkSelected[tab].has(id)?'var(--blue-bg)':'';
+}
+function updateBulkCount(tab){
+  document.getElementById(tab+'-bulk-count').textContent=bulkSelected[tab].size+' selected';
+}
+function selectAllBulk(tab){
+  const allIds=tab==='inv'
+    ?items.filter(i=>i.status==='active').map(i=>i.id)
+    :items.filter(i=>i.status==='sold').map(i=>i.id);
+  const allSel=allIds.every(id=>bulkSelected[tab].has(id));
+  if(allSel)bulkSelected[tab].clear();
+  else allIds.forEach(id=>bulkSelected[tab].add(id));
+  updateBulkCount(tab);
+  tab==='inv'?renderInventory():renderSold();
+}
+function openBulkCategory(tab){
+  const n=bulkSelected[tab].size;
+  if(!n){toast('Select at least one item first');return}
+  document.getElementById('bulk-modal-sub').textContent='Updating '+n+' item'+(n!==1?'s':'');
+  document.getElementById('bulk-modal').dataset.tab=tab;
+  document.getElementById('bulk-modal').classList.add('open');
+}
+async function saveBulkCategory(){
+  const tab=document.getElementById('bulk-modal').dataset.tab;
+  const cat=document.getElementById('bulk-cat').value;
+  const ids=[...bulkSelected[tab]];
+  const btn=document.getElementById('bulk-save-btn');
+  btn.disabled=true;btn.textContent='Saving...';setSyncStatus('syncing','Saving...');
+  let saved=0;
+  for(const id of ids){
+    const item=items.find(i=>i.id===id);
+    if(!item)continue;
+    const updated={...item,category:cat};
+    try{await jsonpFetch({action:'updateItem',...updated});items[items.findIndex(i=>i.id===id)]=updated;saved++;}catch(e){}
+  }
+  setSyncStatus('synced','Synced');
+  closeModal('bulk-modal');
+  bulkSelected[tab].clear();updateBulkCount(tab);
+  toast(saved+' item'+(saved!==1?'s':'')+' updated');
+  await reloadAfterWrite();
+  tab==='inv'?renderInventory():renderSold();
+  btn.disabled=false;btn.textContent='Apply to selected';
+}
+
 function setInvSort(col){
   if(invSort.col===col)invSort.dir*=-1;else{invSort.col=col;invSort.dir=1}
   renderInventory();
@@ -783,6 +883,7 @@ function renderInventory(){
   // Header
   const thStyle='cursor:pointer;user-select:none;white-space:nowrap';
   document.getElementById('inv-thead').innerHTML=`
+    ${bulkMode.inv?'<th style="width:36px"></th>':''}
     <th style="${thStyle}" onclick="setInvSort('name')">Item${sortIcon('name',invSort)}</th>
     <th style="${thStyle}" onclick="setInvSort('category')">Category${sortIcon('category',invSort)}</th>
     <th style="${thStyle}" onclick="setInvSort('buyPrice')">Bought${sortIcon('buyPrice',invSort)}</th>
@@ -792,22 +893,24 @@ function renderInventory(){
     <th></th>`;
   // Desktop rows
   const tb=document.getElementById('inv-table');
-  if(!active.length){tb.innerHTML='<tr><td colspan="7"><div class="empty">No items in inventory yet.</div></td></tr>';}
+  if(!active.length){tb.innerHTML='<tr><td colspan="'+(bulkMode.inv?8:7)+'"><div class="empty">No items in inventory yet.</div></td></tr>';}
   else{tb.innerHTML=active.map(i=>{
     const days=daysAgo(i.datePurchased);
-    return`<tr>
+    const checked=bulkSelected.inv.has(i.id);
+    return`<tr id="bulk-row-${i.id}" style="background:${checked?'var(--blue-bg)':''}">
+    ${bulkMode.inv?`<td><input type="checkbox" ${checked?'checked':''} onchange="toggleBulkSelect('inv','${i.id}')" style="width:15px;height:15px;cursor:pointer;accent-color:var(--blue)"></td>`:''}
     <td><div style="font-weight:500">${i.name}</div>${i.notes?`<div style="font-size:11px;color:var(--text3)">${i.notes}</div>`:''}</td>
     <td>${i.category}</td>
     <td class="mono">${fmt(i.buyPrice)}</td>
     <td class="mono">${i.listedPrice?fmt(i.listedPrice):'—'}</td>
     <td>${platformBadge(i.platform)}</td>
     <td>${daysChip(days,60)}</td>
-    <td><div style="display:flex;gap:5px">
+    <td>${bulkMode.inv?'':`<div style="display:flex;gap:5px">
       <button class="btn btn-sell" onclick="openSell('${i.id}')">Sell</button>
       <button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button>
       <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px" onclick="ebaySearch('${encodeURIComponent(i.name)}')">eBay</button>
       <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Del</button>
-    </div></td>
+    </div>`}</td>
   </tr>`;}).join('');}
   // Mobile cards
   const mc=document.getElementById('inv-cards');
@@ -839,14 +942,17 @@ function setSoldSort(col){
 }
 function renderSold(){
   const filter=document.getElementById('sold-filter').value;
+  const q=(document.getElementById('sold-search').value||'').toLowerCase();
   let sold=items.filter(i=>i.status==='sold');
   if(filter==='month'){const now=new Date();sold=sold.filter(i=>{const d=new Date(i.soldDate);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear()})}
   if(filter==='year')sold=sold.filter(i=>inTaxYear(i.soldDate));
+  if(q)sold=sold.filter(i=>i.name.toLowerCase().includes(q)||i.category.toLowerCase().includes(q));
   // Augment with computed fields for sorting
   sold=sold.map(i=>({...i,profit:i.soldPrice-i.buyPrice-(i.postage||0),dayToSell:daysToSell(i)||0}));
   sold=sortArr(sold,soldSort.col,soldSort.dir);
   const thStyle='cursor:pointer;user-select:none;white-space:nowrap';
   document.getElementById('sold-thead').innerHTML=`
+    ${bulkMode.sold?'<th style="width:36px"></th>':''}
     <th style="${thStyle}" onclick="setSoldSort('name')">Item${sortIcon('name',soldSort)}</th>
     <th style="${thStyle}" onclick="setSoldSort('soldPlatform')">Platform${sortIcon('soldPlatform',soldSort)}</th>
     <th style="${thStyle}" onclick="setSoldSort('buyPrice')">Bought${sortIcon('buyPrice',soldSort)}</th>
@@ -857,10 +963,12 @@ function renderSold(){
     <th></th>`;
   // Desktop
   const tb=document.getElementById('sold-table');
-  if(!sold.length){tb.innerHTML='<tr><td colspan="8"><div class="empty">No sales recorded yet.</div></td></tr>';}
+  if(!sold.length){tb.innerHTML='<tr><td colspan="'+(bulkMode.sold?9:8)+'"><div class="empty">No sales recorded yet.</div></td></tr>';}
   else{tb.innerHTML=sold.map(i=>{
     const pts=daysToSell(i);
-    return`<tr>
+    const checked=bulkSelected.sold.has(i.id);
+    return`<tr id="bulk-row-${i.id}" style="background:${checked?'var(--blue-bg)':''}">
+    ${bulkMode.sold?`<td><input type="checkbox" ${checked?'checked':''} onchange="toggleBulkSelect('sold','${i.id}')" style="width:15px;height:15px;cursor:pointer;accent-color:var(--blue)"></td>`:''}
     <td><div style="font-weight:500">${i.name}</div></td>
     <td>${platformBadge(i.soldPlatform)}</td>
     <td class="mono">${fmt(i.buyPrice)}</td>
@@ -868,19 +976,21 @@ function renderSold(){
     <td class="${i.profit>=0?'profit-pos':'profit-neg'}">${fmt(i.profit)}</td>
     <td>${daysChip(pts,30)}</td>
     <td style="color:var(--text2)">${i.soldDate?i.soldDate.slice(0,10):'—'}</td>
-    <td><div style="display:flex;gap:5px">
+    <td>${bulkMode.sold?'':`<div style="display:flex;gap:5px">
       <button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button>
       <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Del</button>
-    </div></td>
+    </div>`}</td>
   </tr>`;}).join('');}
   // Mobile
   const sc=document.getElementById('sold-cards');
   if(!sold.length){sc.innerHTML='<div class="empty">No sales recorded yet.</div>';}
   else{sc.innerHTML=sold.map(i=>{
     const pts=daysToSell(i);
-    return`<div class="item-card">
+    const checked=bulkSelected.sold.has(i.id);
+    return`<div class="item-card" id="bulk-row-${i.id}" style="background:${checked?'var(--blue-bg)':''}">
     <div style="display:flex;justify-content:space-between;align-items:flex-start">
-      <div class="item-card-title">${i.name}</div>
+      ${bulkMode.sold?`<input type="checkbox" ${checked?'checked':''} onchange="toggleBulkSelect('sold','${i.id}')" style="width:16px;height:16px;cursor:pointer;accent-color:var(--blue);margin-right:10px;flex-shrink:0;margin-top:2px">`:''}
+      <div class="item-card-title" style="flex:1">${i.name}</div>
       ${pts!==null?`<span style="font-size:11px;color:var(--text3);flex-shrink:0;margin-left:8px">${pts}d</span>`:''}
     </div>
     <div class="item-card-row"><span>Sold for</span><span>${fmt(i.soldPrice)}</span></div>
@@ -888,10 +998,10 @@ function renderSold(){
     <div class="item-card-row"><span>Profit</span><span class="${i.profit>=0?'profit-pos':'profit-neg'}">${fmt(i.profit)}</span></div>
     <div class="item-card-row"><span>Platform</span><span style="font-family:inherit">${i.soldPlatform||'—'}</span></div>
     <div class="item-card-row"><span>Date</span><span style="font-family:inherit">${i.soldDate?i.soldDate.slice(0,10):'—'}</span></div>
-    <div class="item-card-actions">
+    ${bulkMode.sold?'':`<div class="item-card-actions">
       <button class="btn btn-edit" onclick="openEdit('${i.id}')">Edit</button>
       <button class="btn btn-danger" onclick="deleteItem('${i.id}')">Delete</button>
-    </div>
+    </div>`}
   </div>`;}).join('');}
 }
 
