@@ -66,11 +66,7 @@ body.compact .item-card-title{font-size:13px;margin-bottom:3px}
 body.compact .metric{padding:.7rem 1rem}
 body.compact .metric-value{font-size:18px}
 
-/* ── Photo hover preview ── */
-.photo-hover-wrap{position:relative;display:inline-flex;align-items:center}
-.photo-hover-popup{position:fixed;z-index:400;pointer-events:none;opacity:0;transform:scale(0.92);transition:opacity 0.15s,transform 0.15s;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--border);background:var(--surface)}
-.photo-hover-popup.visible{opacity:1;transform:scale(1)}
-.photo-hover-popup img{display:block;width:160px;height:160px;object-fit:cover}
+
 
 /* ── Empty dashboard ── */
 .dashboard-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4rem 2rem;text-align:center;gap:16px}
@@ -321,37 +317,23 @@ body.dark .badge-vehicle{background:#1e1030;color:#a080e0}
 <div id="add" class="section">
   <div style="max-width:680px;margin:0 auto">
 
-    <!-- Item name + photo row -->
+    <!-- Item name + details row -->
     <div class="card" style="margin-bottom:10px">
-      <div style="display:flex;gap:16px;align-items:flex-start">
-        <!-- Photo upload box -->
-        <label id="a-photo-label" style="flex-shrink:0;width:80px;height:80px;border:1.5px dashed var(--border2);border-radius:var(--radius);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;background:var(--surface2);transition:all 0.15s;overflow:hidden;position:relative" onmouseover="this.style.borderColor='var(--text2)'" onmouseout="this.style.borderColor='var(--border2)'">
-          <img id="a-photo-img" style="display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:var(--radius)">
-          <div id="a-photo-placeholder" style="display:flex;flex-direction:column;align-items:center;gap:4px">
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="8" r="2.2" stroke="currentColor" stroke-width="1.4"/><path d="M5 3l1-2h4l1 2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-            <span style="font-size:10px;color:var(--text3);text-align:center;line-height:1.3">Add<br>photo</span>
+      <div>
+        <label style="margin-top:0">Item name</label>
+        <input id="a-name" type="text" placeholder="e.g. Nike Air Max 90 UK10" oninput="markDirty()" style="font-size:15px">
+        <div style="display:flex;gap:10px;margin-top:10px">
+          <div style="flex:1">
+            <label>Purchase price <span style="font-weight:400;color:var(--text3)">(per item)</span></label>
+            <input id="a-buy" type="number" step="0.01" min="0" placeholder="0.00" oninput="markDirty()">
           </div>
-          <input type="file" accept="image/*" id="a-photo" style="display:none" onchange="previewPhoto('a-photo','a-photo-preview')">
-        </label>
-        <button id="a-photo-clear" onclick="clearPhoto('a-photo','a-photo-preview','a-photo-img','a-photo-filename');document.getElementById('a-photo-placeholder').style.display='flex'" style="display:none;position:absolute;z-index:10;background:var(--text);color:var(--bg);border:none;border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;align-items:center;justify-content:center;margin-top:-74px;margin-left:62px">✕</button>
-        <div id="a-photo-preview" style="display:none"></div>
-        <!-- Name + price -->
-        <div style="flex:1;min-width:0">
-          <label style="margin-top:0">Item name</label>
-          <input id="a-name" type="text" placeholder="e.g. Nike Air Max 90 UK10" oninput="markDirty()" style="font-size:15px">
-          <div style="display:flex;gap:10px;margin-top:10px">
-            <div style="flex:1">
-              <label>Purchase price <span style="font-weight:400;color:var(--text3)">(per item)</span></label>
-              <input id="a-buy" type="number" step="0.01" min="0" placeholder="0.00" oninput="markDirty()">
-            </div>
-            <div style="width:90px">
-              <label>Quantity</label>
-              <input id="a-qty" type="number" min="1" max="999" placeholder="1" value="1" oninput="markDirty();updateAddBtn()">
-            </div>
-            <div style="flex:1">
-              <label>Date purchased</label>
-              <input id="a-date" type="date" onchange="markDirty()">
-            </div>
+          <div style="width:90px">
+            <label>Quantity</label>
+            <input id="a-qty" type="number" min="1" max="999" placeholder="1" value="1" oninput="markDirty();updateAddBtn()">
+          </div>
+          <div style="flex:1">
+            <label>Date purchased</label>
+            <input id="a-date" type="date" onchange="markDirty()">
           </div>
         </div>
       </div>
@@ -908,42 +890,6 @@ function doUndo(){
   document.getElementById('toast').classList.remove('show');
 }
 
-// ── Photo helpers ─────────────────────────────────────────
-function previewPhoto(inputId,previewId){
-  const file=document.getElementById(inputId).files[0];
-  if(!file)return;
-  const fn=document.getElementById(inputId.replace('photo','photo-filename'));
-  if(fn)fn.textContent=file.name;
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const img=document.getElementById(inputId.replace('photo','photo-img'));
-    const clr=document.getElementById(inputId.replace('photo','photo-clear'));
-    const ph=document.getElementById(inputId.replace('photo','photo-placeholder'));
-    if(img){img.src=e.target.result;img.style.display='block';}
-    if(clr){clr.style.display='flex';}
-    if(ph){ph.style.display='none';}
-    const wrap=document.getElementById(previewId);
-    if(wrap)wrap.style.display='inline-block';
-  };
-  reader.readAsDataURL(file);
-}
-function clearPhoto(inputId,previewId,imgId,fnId){
-  document.getElementById(inputId).value='';
-  const img=document.getElementById(imgId);
-  const clr=document.getElementById(inputId.replace('photo','photo-clear'));
-  const fn=document.getElementById(fnId);
-  const wrap=document.getElementById(previewId);
-  const ph=document.getElementById(inputId.replace('photo','photo-placeholder'));
-  if(img){img.src='';img.style.display='none';}
-  if(clr)clr.style.display='none';
-  if(fn)fn.textContent='';
-  if(wrap)wrap.style.display='none';
-  if(ph)ph.style.display='flex';
-}
-function getPhotoDataURL(inputId){
-  const img=document.getElementById(inputId.replace('photo','photo-img'));
-  return(img&&img.src&&img.src.startsWith('data:'))?img.src:'';
-}
 // ── Expense attachment helpers ─────────────────────────────
 function previewExpAttachment(){
   const input=document.getElementById('e-attach');
@@ -1025,7 +971,6 @@ function normalise(i){
     status:String(i.status||'active'),soldPrice:parseFloat(i.soldPrice)||0,soldPlatform:String(i.soldPlatform||''),
     soldDate:String(i.soldDate||''),postage:parseFloat(i.postage)||0,
     platformFee:parseFloat(i.platformFee)||0,
-    photo:i.photo||'',
     groupId:i.groupId||null,
     dispatched:i.dispatched===true||i.dispatched==='true'};
 }
@@ -1747,7 +1692,7 @@ function renderInventory(){
     const stockBadge=siblings>1?`<span style="font-size:10px;font-weight:500;color:var(--blue);background:var(--blue-bg);padding:1px 7px;border-radius:10px;flex-shrink:0">${siblings} in stock</span>`:'';
     return`<tr id="bulk-row-${i.id}" style="background:${checked?'var(--blue-bg)':''}">
     ${bulkMode.inv?`<td><input type="checkbox" ${checked?'checked':''} onchange="toggleBulkSelect('inv','${i.id}')" style="width:15px;height:15px;cursor:pointer;accent-color:var(--blue)"></td>`:''}
-    <td><div style="display:flex;align-items:center;gap:8px">${i.photo?`<img src="${i.photo}" style="width:32px;height:32px;object-fit:cover;border-radius:4px;border:1px solid var(--border);flex-shrink:0;cursor:zoom-in" onmouseenter="showPhotoHover(event,'${i.photo.replace(/'/g,"\\'")}',)" onmousemove="showPhotoHover(event,'${i.photo.replace(/'/g,"\\'")}',)" onmouseleave="hidePhotoHover()">`:''}
+    <td><div style="display:flex;align-items:center;gap:8px">
       <div><div style="font-weight:500;display:flex;align-items:center;gap:6px">${i.name} ${stockBadge}${i.dispatched?'<span class="badge badge-pending">Dispatched</span>':''}</div>${i.notes?`<div style="font-size:11px;color:var(--text3)">${i.notes}</div>`:''}</div>
     </div></td>
     <td>${i.category}</td>
@@ -1768,7 +1713,6 @@ function renderInventory(){
     const siblings=i.groupId?items.filter(s=>s.status==='active'&&s.groupId===i.groupId).length:0;
     return`<div class="item-card">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-      ${i.photo?`<img src="${i.photo}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius-sm);border:1px solid var(--border);flex-shrink:0">`:''}
       <div style="flex:1">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div class="item-card-title">${i.name}${siblings>1?` <span style="font-size:11px;font-weight:400;color:var(--blue);background:var(--blue-bg);padding:1px 6px;border-radius:10px">${siblings} in stock</span>`:''}${i.dispatched?' <span class="badge badge-pending">Dispatched</span>':''}</div>
@@ -2262,31 +2206,6 @@ function animateCounter(el, target, isCurrency=false, duration=600){
     else el.textContent=formatVal(target);
   }
   requestAnimationFrame(step);
-}
-
-// ── Photo hover preview ───────────────────────────────────
-let hoverPopupTimer=null;
-const hoverPopup=document.createElement('div');
-hoverPopup.className='photo-hover-popup';
-hoverPopup.innerHTML='<img id="hover-popup-img">';
-document.body.appendChild(hoverPopup);
-
-function showPhotoHover(e,src){
-  if(!src)return;
-  clearTimeout(hoverPopupTimer);
-  const img=document.getElementById('hover-popup-img');
-  img.src=src;
-  // Position near cursor but keep on screen
-  const pw=170,ph=170;
-  let x=e.clientX+14,y=e.clientY-20;
-  if(x+pw>window.innerWidth)x=e.clientX-pw-14;
-  if(y+ph>window.innerHeight)y=window.innerHeight-ph-10;
-  hoverPopup.style.left=x+'px';hoverPopup.style.top=y+'px';
-  hoverPopupTimer=setTimeout(()=>hoverPopup.classList.add('visible'),80);
-}
-function hidePhotoHover(){
-  clearTimeout(hoverPopupTimer);
-  hoverPopup.classList.remove('visible');
 }
 
 // ── Init ──────────────────────────────────────────────────
