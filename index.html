@@ -1231,6 +1231,13 @@ function resetAppData(){
 
 // ── Auth init ─────────────────────────────────────────────
 async function initAuth(){
+  // Clear stale session from previous deployment
+  const APP_VERSION='v2-sheets-2025';
+  if(localStorage.getItem('rt_version')!==APP_VERSION){
+    sessionStorage.removeItem('rt_session_auth');
+    localStorage.removeItem('rt_auth');
+    localStorage.setItem('rt_version',APP_VERSION);
+  }
   initDark();
   // Load settings from localStorage
   const s=localStorage.getItem(KEYS.settings);
