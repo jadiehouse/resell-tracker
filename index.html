@@ -874,8 +874,15 @@ async function reloadAfterWrite(){
   await new Promise(r=>setTimeout(r,1800));
   try{
     const data=await jsonpFetch({action:'getAll'});
-    items=(data.items||[]).map(normalise);
-    expenses=(data.expenses||[]).map(e=>({id:String(e.id||''),description:String(e.description||''),amount:parseFloat(e.amount)||0,category:String(e.category||''),date:String(e.date||''),taxYear:String(e.taxYear||'')}) );
+    // Preserve dispatched state from memory in case sheet doesn't have the column yet
+    const dispatchedMap={};
+    items.forEach(i=>{if(i.dispatched)dispatchedMap[i.id]=true;});
+    items=(data.items||[]).map(i=>{
+      const n=normalise(i);
+      if(dispatchedMap[n.id])n.dispatched=true;
+      return n;
+    });
+    expenses=(data.expenses||[]).map(e=>({id:String(e.id||''),description:String(e.description||''),amount:parseFloat(e.amount)||0,category:String(e.category||''),date:String(e.date||''),taxYear:String(e.taxYear||'')}));
     setSyncStatus('synced','Synced');
   }catch(e){setSyncStatus('error','Sync error')}
 }
